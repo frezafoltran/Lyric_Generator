@@ -1,6 +1,6 @@
 # Lyric_Generator
 
-This project aims to produce usable and creative song lyrics based on a database of existing song lyrics. In order to achieve our goal we developed algorithms to compare words and sentences 
+This project aims to produce usable and creative song lyrics based on a database of existing song lyrics we compiled. To achieve our goal we develop and use algorithms to establish relationships between words and between sentences. 
 
 ## Getting Started
 
