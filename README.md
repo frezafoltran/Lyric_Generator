@@ -14,8 +14,3 @@ The main.py file will contain the instructions and sample code runs o show funct
 * **Joao Foltran** - (https://github.com/frezafoltran)
 * **Julian Pakdel** - (https://github.com/jpakdel)
 
-
-## License
-
-This project is licensed under the MIT License - see the [LICENSE.md](LICENSE.md) file for details
-
