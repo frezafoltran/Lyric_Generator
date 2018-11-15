@@ -13,5 +13,5 @@ The main.py file will contain the instructions and sample code runs o show funct
 
 * **Joao Foltran** - (https://github.com/frezafoltran)
 * **Julian Pakdel** - (https://github.com/jpakdel)
-* **Bill Sethares**
+* **Bill Sethares** - (https://en.wikipedia.org/wiki/William_Sethares)
 
