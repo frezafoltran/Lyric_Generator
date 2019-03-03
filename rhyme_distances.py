@@ -7,6 +7,19 @@ words. It will be used to determine how well two words rhyme
 """
 
 import helper_methods as helper
+import math
+import word_processor as wp
+import scraper
+import helper_methods as helper
+import rhyme_distances as rdist
+import scrapping_methods as sm
+import boto3
+import metaphone as met
+import lyricsorter as lsorter
+import json
+
+
+word_relation_table = dynamodb.Table("WordRelation")
 
 
 def memoize(func):
@@ -31,7 +44,9 @@ def edit_dist(a, b):
         return len(b)
     if b == "":
         return len(a)
-    if a[-1] == b[-1]:
+    if a[-1] == b[-1] and (a[-1] in ("a","e", "i", "o", "u") and b[-1] in ("a","e", "i", "o", "u")):
+        cost = -1
+    elif a[-1] == b[-1]:
         cost = 0
     else:
         cost = 1
@@ -42,8 +57,34 @@ def edit_dist(a, b):
 
     return res
 
+def metaphone_dist(met1:str, met2:str, alliteration=False):
 
-def rhyme_dist(p1, p2, tune=[3, 1], dist=0):
+    if len(met1)<len(met2):
+        small = met1
+        large = met2
+    else:
+        small = met2
+        large = met1
+
+    if alliteration:
+        #Ensures that focus is given to first letters
+        if len(small) > 3:
+            split = max(math.floor(len(small) / 2),3)+1
+            return edit_dist(large[:split], small[:split])*split + edit_dist(large[split:], small[split:])
+        else:
+            return edit_dist(large[:len(large)-len(small)+2], small) * 3
+
+    else:
+        #Ensures that focus is given to last letters
+        if len(small) > 3:
+            split = max(math.floor(len(small) / 2),3)
+            return edit_dist(large[split:], small[split:])*split + edit_dist(large[:split], small[:split])
+        else:
+            return edit_dist(large[len(large)-len(small):], small) * 3
+
+
+
+def rhyme_dist(p1, p2, tune=[4, 1], dist=0):
     """This function return the phonetic distance between two words, while
     prioraizing rhymes (i.e. rhymes that occur in the end of
     word).The tunning parameter is a list, where the first entry corresponds to
@@ -69,9 +110,9 @@ def rhyme_dist(p1, p2, tune=[3, 1], dist=0):
     return rhyme_dist(p1[:-size], p2[:-size], [size, weight + 1], dist)
 
 
-def alliteration_dist(p1, p2, tune=[3, 1], dist=0):
+def alliteration_dist(p1, p2, tune=[4, 1], dist=0):
     """This function returns the phonetic distance between two words, while
-    prioraizing alliteration rhyme (i.e. rhymes that occur in the beggining of
+    prioritizing alliteration rhyme (i.e. rhymes that occur in the beginning of
     word).The tune parameter is a list, where the first entry corresponds to
     the syllable size to be compared and the second corresponds to weight
     adjustments.
@@ -80,30 +121,32 @@ def alliteration_dist(p1, p2, tune=[3, 1], dist=0):
     size = tune[0]
     weight = tune[1]
 
+    # do we need the +1 here?
     if weight == 1 and len(p1) < size:
-        dist = edit_dist(p1, p2[:len(p1)])
+        dist = edit_dist(p1, p2[:len(p1)+1])
 
     elif weight == 1 and len(p2) < size:
-        dist = edit_dist(p1[:len(p2)], p2)
+        dist = edit_dist(p1[:len(p2)+1], p2)
 
     elif len(p1) >= size and len(p2) >= size:
-        dist += edit_dist(p1[:size], p2[:size]) / weight
+        dist += edit_dist(p1[:size+1], p2[:size+1]) / weight
 
     else:
         return dist
 
-    return alliteration_dist(p1[size:], p2[size:], [size, weight + 1], dist)
+    return alliteration_dist(p1[size+1:], p2[size+1:], [size, weight + 1], dist)
 
 
-def phonetic_dist(p1, p2, tune=[3, 1], alliteration=False):
+def phonetic_dist(p1, p2, alliteration=False, tune=[4, 1], ):
     """This method gives the rhyme distance between two given words, based on
-    edit distance priciples"""
+    edit distance"""
 
     # formats input to distance functions
     p1 = helper.phonetic_clean(str(p1))
     p2 = helper.phonetic_clean(str(p2))
     p1 = str(p1).replace("\'", "")
     p2 = str(p2).replace("\'", "")
+
 
     # if alliteration is set to True, compare initial overlapping syllables
     if alliteration:
@@ -114,73 +157,227 @@ def phonetic_dist(p1, p2, tune=[3, 1], alliteration=False):
         return rhyme_dist(p1, p2, tune)
 
 
-# This is the old version of method
+
+def met_dist(word_1:str, word_2:str):
+
+    return metaphone_dist(met.doublemetaphone(word_1)[0], met.doublemetaphone(word_2)[0])
+
+def dist(word_1:str, word_2:str, alliteration = False):
+
+    # get phonetic and metaphone of word to be compared
+    all_phonetics = get_all_phonetic_array()
+    try:
+        info_1 = all_phonetics[word_1]
+        info_2 = all_phonetics[word_2]
+    except KeyError:
+        print("Word not in database")
+        return
+
+    phon_dist = phonetic_dist(info_1[0], info_2[0], alliteration)
+    meta_dist = metaphone_dist(info_1[1], info_2[1], alliteration)
+    total_dist = adjust_range(phon_dist, meta_dist)
+
+    return total_dist
 """
-def rhyme_degree(phonetic_1, phonetic_2):
+    try:
+        info_1 = helper.get_by_id(word_1, word_relation_table)
+        info_2 = helper.get_by_id(word_2, word_relation_table)
 
-    #only compare the last syllables of both words
-    size_1 = len(phonetic_1)
-    size_2 = len(phonetic_2)
-    num_to_compare = min(size_1, size_2)
+    except KeyError:
+        print("Word not in database")
+        return
 
-    extra_syllables = max(size_1-num_to_compare, size_2-num_to_compare)
 
-    # the more different the size is between the words, increase the total cost
-    total = 0
-    if extra_syllables == 1:
-        total = 0.5
-    if extra_syllables == 2:
-        total = 1
-    if extra_syllables >= 3:
-        total = 3
+    word_info_1 = [info_1['id'], info_1['phonetic'], met.doublemetaphone(info_1['id'])[0]]
+    word_info_2 = [info_2['id'], info_2['phonetic'], met.doublemetaphone(info_2['id'])[0]]
 
-    # last syllable is weighted twice as much
-    weight_syllable = 1
-    distances = []
 
-    for i in range(1, num_to_compare + 1):
+    phon_dist = phonetic_dist(word_info_1[1], word_info_2[1], alliteration)
+    meta_dist = metaphone_dist(word_info_1[2], word_info_2[2], alliteration)
 
-        # measure distance of last syllable
-        if i == 1:  
+    return adjust_range(phon_dist, meta_dist)
+    
+    """
 
-            total_dist = edit_dist(phonetic_1[size_1-i],phonetic_2[size_2-i])
-            syllable_size = min(len(phonetic_1[size_1-i]),len(phonetic_2[size_2-i]))
 
-            # need to assign smaller weight than 2 if we can find substring:
-            # (i.e kahyt and bahy)
-            # find smaller word
-            appended = False
-            if syllable_size == len(phonetic_1[size_1-i]):
-                if (phonetic_1[size_1-i].find(phonetic_2[size_2-i][:-1]) != -1):
-                    distances.append(total_dist)
-                    appended = True
-                if (phonetic_1[size_1-i].find(phonetic_2[size_2-i][1:]) != -1):
-                    distances.append(total_dist * 0.5)
-                    appended = True
+def metaphone_rhyme(word:str, all_phonetics, thresh = 10, alliteration = False):
+    """This function returns a list of the closest phonetic matches from a given word based on Metaphone encoding and a
+    variation of minimum edit distance function"""
 
-            if syllable_size == len(phonetic_2[size_2-i]):
-                if (phonetic_2[size_2-i].find(phonetic_1[size_1-i][:-1]) != -1):
-                    distances.append(total_dist)
-                    appended = True      
-                if (phonetic_2[size_2-i].find(phonetic_1[size_1-i][1:]) != -1):
-                    distances.append(total_dist*0.5)
-                    appended = True
+    #get phonetic and metaphone of word to be compared
+    info = helper.get_by_id(word, word_relation_table)
+    word_info = [info['id'], info['phonetic'], met.doublemetaphone(info['id'])[0]]
+    print(word_info[2])
+    matches = []
 
-            # if only first letter of syllable differs
-            if (total_dist == 1 and edit_dist(phonetic_1[size_1-i][1:], 
-                              phonetic_2[size_2-i][1:]) == 0 and ~appended):
-                distances.append(total_dist * 0.5)
+    # Compare distance between input word and all other viable words
+    for i in range(len(all_phonetics)):
 
-            # if first two letters of syllable differs
-            if (total_dist == 2 and edit_dist(phonetic_1[size_1-i][2:], 
-                              phonetic_2[size_2-i][2:]) == 0 and ~appended):
-                distances.append(total_dist * 0.5)                    
-            else:  
-                distances.append(total_dist*2*weight_syllable)
+        current_word = all_phonetics[i]
 
-        else:
-            distances.append(edit_dist(phonetic_1[size_1-i],phonetic_2[size_2-i])*weight_syllable)
+        #only compares words that differ
+        if word_info[0] != current_word[0]:
 
-        total += distances[i - 1]
-    return total
+            metaphone_dist = metaphone_dist(word_info[2], current_word[2], alliteration)
+
+            # while matches is not full, populate list
+            if len(matches) < thresh:
+                matches.append({"word": current_word[0], "d": metaphone_dist, "Met": current_word[2]})
+            else:
+                if matches[thresh-1]["d"] > metaphone_dist:
+                    matches[thresh-1] = {"word": current_word[0], "d": metaphone_dist, "Met": current_word[2]}
+
+
+        matches = sorted(matches, key=lambda k: k['d'])
+
+    return matches
+
+def phonetic_rhyme(word:str, all_phonetics, thresh = 10, alliteration = False):
+    """This function returns a list of the closest phonetic matches from a given word based on the "phonetic_dist function"""
+
+    #get phonetic and metaphone of word to be compared
+    info = helper.get_by_id(word, word_relation_table)
+    word_info = [info['id'], info['phonetic'], met.doublemetaphone(info['id'])[0]]
+    print(word_info[1])
+    matches = []
+
+    # Compare distance between input word and all other viable words
+    for i in range(len(all_phonetics)):
+
+        current_word = all_phonetics[i]
+
+        #only compares words that differ and long enough words
+        if word_info[0] != current_word[0] and len(current_word[0]) > 3:
+
+            phon_dist = phonetic_dist(word_info[1], current_word[1], alliteration)
+
+            # while matches is not full, populate list
+            if len(matches) < thresh:
+                matches.append({"word": current_word[0], "d": phon_dist, "Phon": current_word[1]})
+            else:
+                if matches[thresh-1]["d"] > phon_dist:
+                    matches[thresh-1] = {"word": current_word[0], "d": phon_dist, "Phon": current_word[1]}
+
+
+        matches = sorted(matches, key=lambda k: k['d'])
+
+    return matches
+
+def adjust_range(d1, d2):
+    # Since we are not interested in rhymes that are too weak, we limit our analysis to the cases that yield
+    # distances smaller than 10. i.e. focus on range -3,10 for safe margin. This function returns a value between 0 and 1
+    #d1 is phon_dist and d2 is meta_dist
+
+    total_dist = d1 + d2 * 0.5
+
+    if total_dist >= 10:
+        return 1
+
+    elif total_dist <= -3:
+        return 0
+
+    else:
+        return (total_dist + 3)/13
+
+def rhyme_list(word:str, thresh = 10, alliteration = False):
+
+    #get phonetic and metaphone of word to be compared
+    all_phonetics = get_all_phonetic_array()
+    try:
+        info = all_phonetics[word]
+    except KeyError:
+        print("Word not in database")
+        return
+
+    matches = []
+
+    # Compare distance between input word and all other viable words
+    id = list(all_phonetics.keys())
+    for i in range(len(all_phonetics)):
+
+        current_word = id[i]
+        current_info = all_phonetics[current_word]
+
+        #only compares words that differ and long enough words
+        if word != current_word and len(current_word) > 3:
+
+            phon_dist = phonetic_dist(info[0], current_info[0], alliteration)
+            meta_dist = metaphone_dist(info[1], current_info[1], alliteration)
+            total_dist = adjust_range(phon_dist, meta_dist)
+
+            # while matches is not full, populate list
+            if len(matches) < thresh:
+                matches.append({"word": current_word, "d":total_dist , "Phon": current_info[0]})
+            else:
+                if matches[thresh-1]["d"] > phon_dist:
+                    matches[thresh-1] = {"word": current_word, "d": total_dist, "Phon": current_info[0]}
+
+
+        matches = sorted(matches, key=lambda k: k['d'])
+
+    return matches
+
+
+def get_all_phonetic_array():
+    # I have this option set to true because I already saved it in JSON
+    option_json = True
+    if option_json:
+        with open('rap_phonetic_array.json', 'r') as f:
+            corpus = json.load(f)
+            return corpus
+
+    # this part is not utilized until more words are added to database. In which case, code below must be changed
+    # to ensure proper dictionary formatting of corpus
+    """    
+    viable_words = wp.find_viable_words()
+    print(len(viable_words))
+    dic = []
+
+    # This is the part of the code that executed once and saved it as a variable
+
+    for i in range(len(viable_words)):
+        print(i)
+
+        try:
+            entry = helper.get_by_id(viable_words[i], word_relation_table)
+            dic.append((entry['id'], entry['phonetic'], met.doublemetaphone(entry['id'])[0]))
+
+        except KeyError:
+            print('item not found')
+
+    phonetic_array = {
+        "phonetics": dic
+    }
+    with open('rap_phonetic_array.json', 'w') as outfile:
+        json.dump(phonetic_array, outfile, indent = 4)
+    pass
+    return dic
+    """
+
+get_all_phonetic_array()
+"""
+def json_to_dic():
+
+    #Function is used only once to convert json file in list format to dictionary format
+
+    # open json and read content
+    with open('rap_phonetic_array.json', 'r') as f:
+        corpus = json.load(f)
+        corpus = corpus['phonetics']
+
+    #build dictionary
+    output = {}
+    for i in range(len(corpus)):
+        id = corpus[i][0]
+        phon = corpus[i][1]
+        met = corpus[i][2]
+
+        output[id] = [phon, met]
+
+    with open('rap_phonetic_array.json', 'w') as outfile:
+        json.dump(output, outfile, indent = 4)
+    pass
+
+json_to_dic()
+
 """
