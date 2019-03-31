@@ -45,6 +45,7 @@ def get_song_url_list():
 
     return (song_url_list)
 
+#explain function behaviour
 def get_all_sentence_array():
     #I have this option set to true because I already saved it in JSON
     option_json = True
