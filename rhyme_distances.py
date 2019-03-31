@@ -31,6 +31,7 @@ def get_all_phonetic_array():
             corpus = json.load(f)
             return corpus
 
+# test
 all_phonetics = get_all_phonetic_array()
 
 def check_phonetic_existance(word):
