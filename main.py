@@ -14,7 +14,7 @@ import boto3
 
 word_relation_table = dynamodb.Table("WordRelation")
 
-
+# main file
 # Read phonetics and words from file
 dic_phon = []
 file = open('phonetic_word.txt', 'r')
