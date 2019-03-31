@@ -1,6 +1,7 @@
+
 import boto3
 from PyDictionary import PyDictionary
-
+dynamodb = boto3.resource("dynamodb")
 proxy_table = dynamodb.Table("Proxy")
 word_table = dynamodb.Table("Word")
 dictionary=PyDictionary()
@@ -810,10 +811,8 @@ def get_slang_list():
     slang_list = list(response['Item']['words'])
     return (slang_list)
 
-"""
 for word in slang_words:
     word = clean_slang(word)
     if is_slang(word) is False:
         insert_word(word)
-"""
 #print(is_slang("morphine"))

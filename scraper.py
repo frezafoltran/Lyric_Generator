@@ -3,7 +3,7 @@ import requests
 import boto3
 import random
 import helper_methods
-
+dynamodb = boto3.resource("dynamodb")
 proxy_table = dynamodb.Table("Proxy")
 word_table = dynamodb.Table("Word")
 song_table = dynamodb.Table("Song")
@@ -68,7 +68,7 @@ def get_proxy():
     #proxy_response = [item["ip"], item["port"]]
     return proxy_response
 
-#word_dict = []
+word_dict = []
 
 def insert_song(link, lyrics):
     """First we update the number of items in the table, then we add an index for which number entry the link is,

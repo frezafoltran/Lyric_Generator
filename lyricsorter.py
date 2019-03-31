@@ -7,7 +7,7 @@ import slang_cleaner
 from botocore.exceptions import ClientError
 from PyDictionary import PyDictionary
 
-
+dynamodb = boto3.resource("dynamodb")
 proxy_table = dynamodb.Table("Proxy")
 word_table = dynamodb.Table("Word")
 song_table = dynamodb.Table("Song")
@@ -26,7 +26,7 @@ def get_lyrics_list():
     return list(map["url_list"])[0:5]
 
 
-#song_words = []
+song_words = []
 
 
 def get_words(link: str):
@@ -88,8 +88,8 @@ def get_words(link: str):
     except ClientError:
         pass
 
-#slang_words = []
-#proper_words = []
+slang_words = []
+proper_words = []
 
 
 def separate_words():
@@ -161,7 +161,7 @@ def get_song_url_list():
 
     return (song_url_list)
 
-#sentences = []
+sentences = []
 
 def remove_paranthases(input: str):
     output = ""
@@ -178,3 +178,5 @@ def remove_paranthases(input: str):
 
 def hasNumbers(inputString):
     return any(char.isdigit() for char in inputString)
+
+
